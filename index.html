@@ -1267,6 +1267,8 @@
       const modal = document.getElementById('cloud-sync-modal');
       const input = document.getElementById('cloud-sync-url');
       if (input) input.value = cloudSyncUrl;
+      const testStatus = document.getElementById('cloud-test-status');
+      if (testStatus) testStatus.textContent = '';
       if (modal) modal.classList.remove('hidden');
     }
 
@@ -1279,42 +1281,201 @@
       const input = document.getElementById('cloud-sync-url');
       cloudSyncUrl = (input.value || '').trim();
       localStorage.setItem('martingale_cloud_sync_url', cloudSyncUrl);
-      closeCloudModal();
       if (cloudSyncUrl) {
-        alert('🎉 云端同步已开启！今后每次打卡将自动静默同步至你的 Google Drive 表格。');
+        if (!cloudSyncUrl.endsWith('/exec')) {
+          alert('⚠️ 注意：您填写的链接似乎不是以 /exec 结尾！\n请确保复制的是 Google Apps Script 部署后生成的【Web 应用程序网址】，而不是浏览器顶部的编辑网址。');
+        } else {
+          alert('🎉 云端同步已开启！今后每次打卡将自动静默同步至你的 Google 表格。');
+        }
       } else {
         alert('云端同步链接已清空。');
       }
+      closeCloudModal();
     }
 
     function copyGasScript() {
       const code = `function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = JSON.parse(e.postData.contents);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["时间", "策略", "详情", "胜出手", "净盈亏($)", "截图Base64"]);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getActiveSheet();
+    var data = JSON.parse(e.postData.contents);
+    
+    // 如果表格为空，写入统一表头
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["交易时间", "策略模式", "胜出详情", "净盈亏($)", "账户总资产($)", "回本进度", "凭证/备注"]);
+      sheet.getRange(1, 1, 1, 7).setBackground("#10B981").setFontColor("#FFFFFF").setFontWeight("bold");
+    }
+    
+    // 智能定位首个空白行（检查A列，防止被预设公式推到第60行）
+    var values = sheet.getRange("A:A").getValues();
+    var targetRow = 0;
+    for (var i = 2; i < values.length; i++) {
+      if (!values[i][0] || values[i][0] === "") {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    if (targetRow === 0) {
+      targetRow = sheet.getLastRow() + 1;
+    }
+    
+    if (data.batch && Array.isArray(data.batch)) {
+      data.batch.forEach(function(item) {
+        writeEntry(sheet, targetRow++, item);
+      });
+    } else {
+      writeEntry(sheet, targetRow, data);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", row: targetRow }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
-  sheet.appendRow([data.time, data.strat, data.desc, data.roundHit, data.profit, data.image || "无"]);
-  return ContentService.createTextOutput(JSON.stringify({"result": "success"})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function writeEntry(sheet, row, item) {
+  sheet.getRange(row, 1).setValue(item.time || new Date().toLocaleString());
+  sheet.getRange(row, 2).setValue(item.strat || "倍投");
+  sheet.getRange(row, 3).setValue(item.desc || "");
+  sheet.getRange(row, 4).setValue(Number(item.profit) || 0);
+  if (item.balance) sheet.getRange(row, 5).setValue(Number(item.balance));
+  if (item.recovery) sheet.getRange(row, 6).setValue(item.recovery);
+  sheet.getRange(row, 7).setValue(item.image ? "🖼️ 附带交易截图凭证" : (item.note || ""));
 }`;
       navigator.clipboard.writeText(code).then(() => {
-        alert('已复制 Google Apps Script 专用脚本到剪贴板！');
+        alert('已复制全新智能定位版 Google Apps Script 专用代码到剪贴板！');
       }).catch(() => {
         prompt('请手动复制以下脚本：', code);
       });
     }
 
-    // 发送数据到云端
+    // 发送数据到云端 (使用 text/plain 头以避免 CORS 规范限制)
     function syncToCloud(entry) {
       if (!cloudSyncUrl) return;
       try {
+        let bal = state.initialCapital;
+        tradeLogs.forEach(l => { bal += l.profit; });
+        const payload = {
+          ...entry,
+          balance: bal,
+          recovery: `${((Math.max(0, bal - state.initialCapital) / state.initialCapital) * 100).toFixed(1)}%`
+        };
+
         fetch(cloudSyncUrl, {
           method: 'POST',
           mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(entry)
-        }).catch(err => console.log('Cloud sync silent err:', err));
-      } catch (e) {}
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        }).catch(err => console.log('Cloud sync err:', err));
+      } catch (e) {
+        console.log('Sync error:', e);
+      }
+    }
+
+    // 测试云端同步
+    async function testCloudSync() {
+      const input = document.getElementById('cloud-sync-url');
+      const url = (input ? input.value : cloudSyncUrl || '').trim();
+      const testStatus = document.getElementById('cloud-test-status');
+
+      if (!url) {
+        alert('请先输入 Google Apps Script 网址！');
+        return;
+      }
+      if (!url.endsWith('/exec')) {
+        if (!confirm('⚠️ 网址不是以 /exec 结尾，这通常是未正确复制部署后的应用网址。\n是否仍要继续尝试？')) {
+          return;
+        }
+      }
+
+      if (testStatus) {
+        testStatus.textContent = '⏳ 正在向 Google 表格发送测试数据，请稍候...';
+        testStatus.className = 'text-xs text-amber-500 font-medium block mt-2';
+      }
+
+      const testPayload = {
+        time: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+        strat: '连线测试',
+        desc: '系统同步连通测试',
+        roundHit: 1,
+        profit: 5,
+        balance: state.initialCapital + 5,
+        recovery: '0.1%',
+        note: '测试连通成功！'
+      };
+
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(testPayload)
+        });
+        if (testStatus) {
+          testStatus.innerHTML = '✅ <span class="text-emerald-500 font-bold">测试数据已发出！</span> 请立即切换到 Google 表格查看首个空白行是否已出现该行记录！';
+        }
+      } catch (err) {
+        if (testStatus) {
+          testStatus.textContent = '❌ 发送失败：' + err.message;
+          testStatus.className = 'text-xs text-rose-500 font-semibold block mt-2';
+        }
+      }
+    }
+
+    // 一键同步所有历史记录到云端
+    async function syncAllLogsToCloud() {
+      const input = document.getElementById('cloud-sync-url');
+      const url = (input ? input.value : cloudSyncUrl || '').trim();
+      const testStatus = document.getElementById('cloud-test-status');
+
+      if (!url) {
+        alert('请先配置并保存 Google Apps Script 网址！');
+        return;
+      }
+      if (tradeLogs.length === 0) {
+        alert('当前没有本地交易记录可同步！');
+        return;
+      }
+
+      if (testStatus) {
+        testStatus.textContent = `⏳ 正在批量上传 ${tradeLogs.length} 条历史记录到 Google 表格...`;
+        testStatus.className = 'text-xs text-amber-500 font-medium block mt-2';
+      }
+
+      let runningBal = state.initialCapital;
+      const sorted = [...tradeLogs].reverse();
+      const batchData = sorted.map(log => {
+        runningBal += log.profit;
+        return {
+          time: log.time,
+          strat: log.strat,
+          desc: log.desc,
+          roundHit: log.roundHit,
+          profit: log.profit,
+          balance: runningBal,
+          recovery: `${((Math.max(0, runningBal - state.initialCapital) / state.initialCapital) * 100).toFixed(1)}%`,
+          note: log.isLoss ? '触发止损' : `第 ${log.roundHit} 手胜`
+        };
+      });
+
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ batch: batchData })
+        });
+        if (testStatus) {
+          testStatus.innerHTML = `✅ <span class="text-emerald-500 font-bold">已成功批量提交 ${tradeLogs.length} 条记录！</span> 请前往 Google 表格查看！`;
+        }
+      } catch (err) {
+        if (testStatus) {
+          testStatus.textContent = '❌ 批量同步失败：' + err.message;
+          testStatus.className = 'text-xs text-rose-500 font-semibold block mt-2';
+        }
+      }
     }
 
     window.addEventListener('resize', () => {
@@ -1361,21 +1522,24 @@
         <div>
           <label class="block font-semibold text-[var(--foreground)] mb-1">你的 Google Apps Script 云端同步链接 (Web App URL)：</label>
           <input type="text" id="cloud-sync-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-[var(--primary)]">
-          <p class="text-[11px] text-[var(--muted-foreground)] mt-1">配置此链接后，每次点击打卡，交易记录和截图将<b>自动、实时、静默直接上传到你的 Google Drive 表格中</b>！</p>
+          <div class="flex items-center gap-2 mt-2">
+            <button type="button" class="px-3 py-1.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 border border-sky-500/30 rounded-lg font-medium transition" onclick="testCloudSync()">🧪 发送一条测试数据到 Google 表格</button>
+            <button type="button" class="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg font-medium transition" onclick="syncAllLogsToCloud()">🚀 一键同步所有历史记录到表格</button>
+          </div>
+          <div id="cloud-test-status"></div>
         </div>
 
         <div class="p-3 bg-[var(--background)] border border-[var(--border)] rounded-xl space-y-2">
-          <div class="font-semibold text-[var(--foreground)]">📖 如何获取免费专属的 Google 云端链接？（只需1分钟）：</div>
-          <ol class="list-decimal list-inside space-y-1 text-[var(--muted-foreground)] leading-relaxed">
-            <li>打开你的 Google Drive，新建一个 <b>Google 表格</b>；</li>
-            <li>点击菜单栏 <b>扩展程序 (Extensions) $	o$ Apps 脚本 (Apps Script)</b>；</li>
-            <li>把系统提供的代码全选替换为你的一键脚本；</li>
-            <li>点击右上角 <b>部署 $	o$ 新建部署 $	o$ 所有人可用</b>，复制生成的链接粘贴到上方即可！</li>
+          <div class="font-semibold text-[var(--foreground)]">📖 为什么在 Google 表格看不到记录？3 大核心排查点：</div>
+          <ol class="list-decimal list-inside space-y-1.5 text-[var(--muted-foreground)] leading-relaxed">
+            <li><b>滑到第 60 行看看</b>：如果使用模板，前面预设了公式，旧脚本会追加在最下方（第 60 行）；请重新复制新脚本即可智能写到首个空白行！</li>
+            <li><b>谁有权访问必须选【任何人】</b>：在 Google 脚本部署时，<b>“谁有权访问 (Who has access)”</b> 必须选 <b>Anyone (所有人)</b>，选“仅我自己”会被 Google 拦截！</li>
+            <li><b>网址必须以 /exec 结尾</b>：不能复制浏览器上方的 edit 编辑链接，必须在【部署】成功窗口中复制应用网址。</li>
           </ol>
         </div>
 
         <div class="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-          <button type="button" class="px-3 py-1.5 text-xs text-sky-500 hover:underline" onclick="copyGasScript()">📋 复制 Google Apps Script 专用代码</button>
+          <button type="button" class="px-3 py-1.5 text-xs text-sky-500 hover:underline" onclick="copyGasScript()">📋 复制最新智能 Google 脚本代码</button>
           <div class="flex gap-2">
             <button type="button" class="px-3 py-1.5 border border-[var(--border)] rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--background)]" onclick="closeCloudModal()">取消</button>
             <button type="button" class="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-bold" onclick="saveCloudUrl()">保存并启用云端同步</button>
