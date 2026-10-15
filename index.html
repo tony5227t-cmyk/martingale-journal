@@ -100,8 +100,8 @@
             </div>
           </div>
 
-          <div class="flex items-center gap-2 self-start sm:self-auto">
             <input type="file" id="screenshot-file-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+            <input type="file" id="row-image-input" accept="image/*" class="hidden" onchange="handleRowImageSelect(event)">
             
             <!-- 缩略预览 (当有待附截图时展示) -->
             <div id="pending-image-preview" class="hidden items-center gap-2 bg-[var(--card)] border border-[var(--border)] px-2.5 py-1 rounded-lg">
@@ -577,6 +577,31 @@
       }
     }
 
+    let uploadTargetLogId = null;
+
+    function triggerRowImageUpload(id) {
+      uploadTargetLogId = id;
+      const fileInput = document.getElementById('row-image-input');
+      if (fileInput) fileInput.click();
+    }
+
+    function handleRowImageSelect(e) {
+      const file = e.target.files?.[0];
+      if (file && uploadTargetLogId) {
+        compressImage(file, dataUrl => {
+          const target = tradeLogs.find(l => l.id === uploadTargetLogId);
+          if (target) {
+            target.image = dataUrl;
+            saveLogs();
+            renderJournal();
+            syncToCloud(target);
+          }
+        });
+      }
+      e.target.value = '';
+      uploadTargetLogId = null;
+    }
+
     // 大图预览弹窗
     function openImageModal(imgSrc, title) {
       const modal = document.getElementById('image-modal');
@@ -796,12 +821,17 @@
               </td>
               <td class="py-2.5 px-3">
                 ${log.image ? `
-                  <button type="button" class="group relative inline-flex items-center justify-center rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--primary)] transition shadow-sm" onclick="openImageModal('${log.image}', '${log.strat} - ${log.time}')" title="点击查看截图原图">
-                    <img src="${log.image}" class="w-8 h-8 object-cover group-hover:scale-105 transition-transform duration-200">
-                    <span class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] transition-opacity">🔍</span>
-                  </button>
+                  <div class="inline-flex items-center gap-1.5">
+                    <button type="button" class="group relative inline-flex items-center justify-center rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--primary)] transition shadow-sm" onclick="openImageModal('${log.image}', '${log.strat} - ${log.time}')" title="点击查看大图">
+                      <img src="${log.image}" class="w-8 h-8 object-cover group-hover:scale-105 transition-transform duration-200">
+                      <span class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] transition-opacity">🔍</span>
+                    </button>
+                    <button type="button" class="text-[10px] text-sky-500 hover:underline px-1 py-0.5 rounded" onclick="triggerRowImageUpload(${log.id})" title="更换截图">换图</button>
+                  </div>
                 ` : `
-                  <span class="text-[var(--muted-foreground)]/60 text-[11px]">-</span>
+                  <button type="button" class="text-[11px] px-2 py-1 bg-[var(--background)] hover:bg-[var(--card)] border border-dashed border-sky-500/40 hover:border-sky-500 rounded text-sky-500 font-medium transition flex items-center gap-1" onclick="triggerRowImageUpload(${log.id})" title="为本笔交易补传截图">
+                    <span>📸</span> 传截图
+                  </button>
                 `}
               </td>
               <td class="py-2.5 px-3 font-bold ${log.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}">
@@ -1342,7 +1372,25 @@ function writeEntry(sheet, row, item) {
   sheet.getRange(row, 4).setValue(Number(item.profit) || 0);
   if (item.balance) sheet.getRange(row, 5).setValue(Number(item.balance));
   if (item.recovery) sheet.getRange(row, 6).setValue(item.recovery);
-  sheet.getRange(row, 7).setValue(item.image ? "🖼️ 附带交易截图凭证" : (item.note || ""));
+  
+  var imgVal = "无截图";
+  if (item.image && item.image.indexOf("data:image") === 0) {
+    try {
+      var folderName = "倍投实战交易截图凭证";
+      var folders = DriveApp.getFoldersByName(folderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      var parts = item.image.split(",");
+      var mime = parts[0].split(";")[0].replace("data:", "");
+      var decoded = Utilities.base64Decode(parts[1]);
+      var fileName = "Trade_" + (item.time || new Date().getTime()).toString().replace(/[\/:\s]/g, "_") + ".jpg";
+      var file = folder.createFile(Utilities.newBlob(decoded, mime, fileName));
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      imgVal = '=HYPERLINK("' + file.getUrl() + '", "🖼️ 点击在 Google Drive 查看原图")';
+    } catch(err) {
+      imgVal = "截图已转存";
+    }
+  }
+  sheet.getRange(row, 7).setValue(imgVal);
 }`;
       navigator.clipboard.writeText(code).then(() => {
         alert('已复制全新智能定位版 Google Apps Script 专用代码到剪贴板！');
