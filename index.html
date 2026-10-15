@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>倍投实战交易日志与策略计算器（USD / $）</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-6 font-sans">
+  <div class="max-w-6xl mx-auto space-y-6">
+
+    <!-- 顶部导航与大标题 -->
+    <header class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 md:p-6 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-xs font-medium mb-2">
+            <span>实战交易日志</span>
+            <span>•</span>
+            <span>资金曲线 + 回本追踪 + 双倍投计算器</span>
+          </div>
+          <h1 class="text-xl md:text-2xl font-bold tracking-tight text-[var(--foreground)]">
+            实战交易记录日志与马丁倍投追踪系统
+          </h1>
+          <p class="text-sm text-[var(--muted-foreground)] mt-1">
+            每天记账打卡你的实战交易，实时监控账户总资产曲线、回本警戒线与连黑风控指标。
+          </p>
+        </div>
+
+        <!-- 顶部主功能模块切换 -->
+        <div class="flex items-center bg-[var(--background)] border border-[var(--border)] p-1 rounded-xl text-xs font-semibold self-start md:self-auto">
+          <button id="tab-btn-journal" class="px-4 py-2 rounded-lg bg-[var(--card)] text-[var(--foreground)] shadow-sm transition flex items-center gap-1.5" onclick="switchMainTab('journal')">
+            <span>📝 实战交易日志</span>
+          </button>
+          <button id="tab-btn-calc" class="px-4 py-2 rounded-lg text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition flex items-center gap-1.5" onclick="switchMainTab('calc')">
+            <span>🧮 策略参数计算器</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ========================================== -->
+    <!-- 模块一：实战交易记录日志 (Trading Journal) -->
+    <!-- ========================================== -->
+    <div id="section-journal" class="space-y-6">
+
+      <!-- 账户资产核心概览卡片 -->
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">当前账户总资产</div>
+          <div id="journal-total-balance" class="text-xl md:text-2xl font-extrabold text-[var(--foreground)] font-mono">$5,115</div>
+          <div id="journal-net-profit" class="text-xs font-semibold text-emerald-500 mt-1 font-mono">+$0 (净盈亏)</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">本金安全撤出进度</div>
+          <div id="journal-recovery-pct" class="text-xl md:text-2xl font-extrabold text-sky-500 font-mono">0.0%</div>
+          <div id="journal-recovery-sub" class="text-xs text-[var(--muted-foreground)] mt-1 font-mono">离完全回本还差 $5,115</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">已记录交易战绩</div>
+          <div id="journal-trade-count" class="text-xl md:text-2xl font-extrabold text-[var(--foreground)] font-mono">0 胜 / 0 止损</div>
+          <div id="journal-win-rate" class="text-xs text-[var(--muted-foreground)] mt-1">胜出率 100%</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">经历最大抗连黑</div>
+          <div id="journal-max-round" class="text-xl md:text-2xl font-extrabold text-amber-500 font-mono">第 1 轮</div>
+          <div class="text-xs text-[var(--muted-foreground)] mt-1">单次最高承压记录</div>
+        </div>
+      </section>
+
+      <!-- 快速记账与录入面板 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="font-semibold text-base text-[var(--foreground)]">快速记账打卡</h2>
+            <p class="text-xs text-[var(--muted-foreground)]">完成一轮交易后，点击下方对应胜出轮次，系统自动根据当前策略计算注码并计入日志</p>
+          </div>
+          
+          <!-- 记账策略选择 -->
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-[var(--muted-foreground)]">当前记账策略:</span>
+            <select id="journal-strategy" class="bg-[var(--background)] border border-[var(--border)] rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none" onchange="updateQuickButtons()">
+              <option value="standard">标准倍投 (B=$5, 胜出净利恒定 $5)</option>
+              <option value="grand">大马丁倍投 (B=$5, K=$5, 胜出净利递增)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 快捷一键录入按钮组 -->
+        
+        <!-- 截图附件区域 -->
+        <div class="p-3 bg-[var(--background)]/60 border border-dashed border-[var(--border)] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-base">📸</span>
+            <div>
+              <span class="font-semibold text-[var(--foreground)]">交易截图附件：</span>
+              <span class="text-[var(--muted-foreground)]">支持直接按 <kbd class="px-1.5 py-0.5 bg-[var(--card)] border border-[var(--border)] rounded font-mono font-semibold">Ctrl + V</kbd> 粘贴截图，或点击选择图片</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 self-start sm:self-auto">
+            <input type="file" id="screenshot-file-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+            
+            <!-- 缩略预览 (当有待附截图时展示) -->
+            <div id="pending-image-preview" class="hidden items-center gap-2 bg-[var(--card)] border border-[var(--border)] px-2.5 py-1 rounded-lg">
+              <img id="pending-thumb" src="" class="w-6 h-6 object-cover rounded">
+              <span class="text-[11px] text-emerald-500 font-medium">已就绪 (下次打卡将附带)</span>
+              <button class="text-[11px] text-rose-500 hover:text-rose-700 ml-1 font-bold" onclick="removePendingImage()">✕</button>
+            </div>
+
+            <button type="button" class="px-3 py-1.5 bg-[var(--card)] hover:bg-[var(--background)] border border-[var(--border)] rounded-lg text-xs font-medium text-[var(--foreground)] flex items-center gap-1.5 transition" onclick="document.getElementById('screenshot-file-input').click()">
+              <span>📎 选择截图文件</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="text-xs text-[var(--muted-foreground)] font-medium">⚡ 快捷录入胜场（点击即可一秒完成打卡）：</div>
+          <div id="quick-win-buttons" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            <!-- 动态生成按钮 -->
+          </div>
+        </div>
+
+        <!-- 自定义录入折叠区 -->
+        <div class="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-[var(--muted-foreground)]">或手动自定义：</span>
+            <input type="text" id="custom-desc" placeholder="备注（如：第15天上午5连胜）" class="bg-[var(--background)] border border-[var(--border)] rounded-md px-2.5 py-1 text-xs w-48 focus:outline-none">
+            <input type="number" id="custom-amount" placeholder="净盈亏金额 (+/-$)" class="bg-[var(--background)] border border-[var(--border)] rounded-md px-2.5 py-1 text-xs w-32 font-mono focus:outline-none">
+            <button class="px-3 py-1 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-md font-medium hover:opacity-90 transition" onclick="addCustomLog()">
+              添加记账
+            </button>
+            <button class="px-3 py-1 bg-rose-500/10 text-rose-500 border border-rose-500/30 rounded-md font-medium hover:bg-rose-500/20 transition" onclick="addBustLog()">
+              ⚠️ 录入连黑止损
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 flex items-center gap-1" onclick="exportToCSV()" title="导出为 CSV 表格，可直接上传到 Google Drive / Sheets 打开">
+              <span>📊 导出 Google 表格 (CSV)</span>
+            </button>
+            <button class="px-2.5 py-1 border border-[var(--border)] rounded text-[var(--foreground)] hover:bg-[var(--background)] flex items-center gap-1" onclick="exportBackupJSON()" title="导出包含所有截图的完整备份文件">
+              <span>💾 备份全部记录 (JSON)</span>
+            </button>
+            <input type="file" id="import-json-file" accept=".json" class="hidden" onchange="importBackupJSON(event)">
+            <button class="px-2.5 py-1 border border-[var(--border)] rounded text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--background)] flex items-center gap-1" onclick="document.getElementById('import-json-file').click()" title="从备份文件恢复记录">
+              <span>📥 导入恢复</span>
+            </button>
+            <button class="px-2.5 py-1 border border-[var(--border)] rounded text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--background)]" onclick="loadSampleLogs()">
+              示范数据
+            </button>
+            <button class="px-2.5 py-1 border border-rose-500/30 text-rose-500 rounded hover:bg-rose-500/10" onclick="clearLogs()">
+              清空
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 实时账户资金走势与回本警戒线图表 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 class="font-semibold text-base text-[var(--foreground)]">账户总资金曲线 (Equity Curve) 与回本线</h2>
+            <p class="text-xs text-[var(--muted-foreground)]">实线为账户实际资金净值走势，青色虚线为初始本金线，绿色虚线为翻倍回本警戒线</p>
+          </div>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-500 inline-block"></span> 资金总额</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dashed border-gray-400 inline-block"></span> 初始本金 ($5,115)</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dashed border-emerald-500 inline-block"></span> 翻倍回本线 ($10,230)</span>
+          </div>
+        </div>
+
+        <!-- Canvas 折线图 -->
+        <div class="relative w-full h-72 md:h-80">
+          <canvas id="equityChart" class="w-full h-full"></canvas>
+        </div>
+      </section>
+
+      <!-- 交易日志明细列表 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 class="font-semibold text-base text-[var(--foreground)]">实战交易明细记录</h2>
+            <p class="text-xs text-[var(--muted-foreground)]">数据自动保存在浏览器本地，刷新不丢失</p>
+          </div>
+          <div class="text-xs text-[var(--muted-foreground)]">
+            共 <span id="log-count-badge" class="font-bold text-[var(--foreground)]">0</span> 条交易记录
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse font-mono">
+            <thead>
+              <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)] font-semibold bg-[var(--background)]/50">
+                <th class="py-2.5 px-3">序号 / 时间</th>
+                <th class="py-2.5 px-3">策略模式</th>
+                <th class="py-2.5 px-3">交易详情 / 胜出轮次</th>
+                <th class="py-2.5 px-3 font-bold">净盈亏 ($)</th>
+                <th class="py-2.5 px-3">交易后账户结余</th>
+                <th class="py-2.5 px-3">回本状态</th>
+                <th class="py-2.5 px-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="journal-tbody" class="divide-y divide-[var(--border)]">
+              <!-- 动态交易行 -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 模块二：策略参数计算器 (Strategy Calculator)-->
+    <!-- ========================================== -->
+    <div id="section-calc" class="hidden space-y-6">
+
+      <!-- 控制面板 -->
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- 运行天数 Days -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-2">
+            <div>
+              <label class="text-xs font-semibold text-[var(--foreground)]">计划运行天数 (Days)</label>
+              <span class="block text-[11px] text-[var(--muted-foreground)]">自选周期 1~180 天</span>
+            </div>
+            <span id="val-days" class="text-sm font-bold text-sky-500 font-mono">30 天</span>
+          </div>
+          <input type="range" id="range-days" min="1" max="180" step="1" value="30" class="w-full accent-sky-500 cursor-pointer" oninput="syncParam('days', this.value)">
+          <div class="flex items-center gap-1 mt-3">
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('days', 7)">7天</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('days', 15)">15天</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('days', 30)">30天</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('days', 90)">90天</button>
+          </div>
+        </div>
+
+        <!-- 每日胜出轮数 Daily Wins -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-2">
+            <div>
+              <label class="text-xs font-semibold text-[var(--foreground)]">每日胜出轮数 (Wins/天)</label>
+              <span class="block text-[11px] text-[var(--muted-foreground)]">每日赢下收工轮数</span>
+            </div>
+            <span id="val-dailywins" class="text-sm font-bold text-emerald-500 font-mono">5 轮</span>
+          </div>
+          <input type="range" id="range-dailywins" min="1" max="20" step="1" value="5" class="w-full accent-emerald-500 cursor-pointer" oninput="syncParam('dailywins', this.value)">
+          <div class="flex items-center gap-1 mt-3">
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('dailywins', 3)">3轮</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('dailywins', 5)">5轮</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('dailywins', 8)">8轮</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('dailywins', 10)">10轮</button>
+          </div>
+        </div>
+
+        <!-- 基础注码 B -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-2">
+            <div>
+              <label class="text-xs font-semibold text-[var(--foreground)]">起始基数 (B)</label>
+              <span class="block text-[11px] text-[var(--muted-foreground)]">第 1 轮下注额</span>
+            </div>
+            <span id="val-base" class="text-sm font-bold text-[var(--primary)] font-mono">$5</span>
+          </div>
+          <input type="range" id="range-base" min="1" max="50" step="1" value="5" class="w-full accent-[var(--primary)] cursor-pointer" oninput="syncParam('base', this.value)">
+          <div class="flex items-center gap-1 mt-3">
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('base', 1)">$1</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('base', 2)">$2</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('base', 5)">$5</button>
+            <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('base', 10)">$10</button>
+          </div>
+        </div>
+
+        <!-- 大马丁追加基数 K -->
+        <div class="bg-[var(--card)] border border-amber-500/30 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-2">
+            <div>
+              <label class="text-xs font-semibold text-amber-600 dark:text-amber-400">大马丁额外基数 (K)</label>
+              <span class="block text-[11px] text-[var(--muted-foreground)]">输了下轮 2x + K</span>
+            </div>
+            <span id="val-k" class="text-sm font-bold text-amber-500 font-mono">$5</span>
+          </div>
+          <input type="range" id="range-k" min="0" max="50" step="1" value="5" class="w-full accent-amber-500 cursor-pointer" oninput="syncParam('k', this.value)">
+          <div class="flex items-center justify-between gap-1 mt-3">
+            <div class="flex gap-1">
+              <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('k', 1)">+1</button>
+              <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('k', 2)">+2</button>
+              <button class="px-2 py-1 text-xs border border-[var(--border)] rounded hover:bg-[var(--background)]" onclick="setParam('k', 5)">+5</button>
+            </div>
+            <button class="px-2 py-1 text-xs bg-[var(--background)] border border-[var(--border)] rounded text-amber-600 dark:text-amber-400 font-medium" onclick="syncKWithBase()">K=B</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 附属控制：连续轮次与胜率 -->
+      <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-3 bg-[var(--card)] border border-[var(--border)] rounded-xl text-xs">
+        <div class="flex items-center gap-3">
+          <span class="text-[var(--muted-foreground)]">连黑容忍轮次:</span>
+          <input type="range" id="range-rounds" min="3" max="14" step="1" value="10" class="w-28 cursor-pointer" oninput="syncParam('rounds', this.value)">
+          <span id="val-rounds" class="font-bold font-mono">10 轮</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-[var(--muted-foreground)]">单局胜率:</span>
+          <input type="range" id="range-winrate" min="40" max="60" step="0.5" value="50" class="w-28 cursor-pointer" oninput="syncParam('winrate', this.value)">
+          <span id="val-winrate" class="font-bold font-mono">50.0%</span>
+        </div>
+        <div class="text-[var(--muted-foreground)]">
+          10轮连黑爆仓率: <span id="bust-prob-badge" class="font-bold text-rose-500 font-mono">0.098%</span>
+        </div>
+      </div>
+
+      <!-- KPI 关键指标看板 -->
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">标准倍投 · 回本天数</div>
+          <div id="kpi-std-breakeven" class="text-xl md:text-2xl font-extrabold text-sky-500 font-mono">204.6 天</div>
+          <div id="kpi-std-breakeven-sub" class="text-xs text-[var(--muted-foreground)] mt-1">需备本金 $5,115 (日赚 $25)</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-amber-500/30 rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1">大马丁 · 理论回本天数</div>
+          <div id="kpi-grand-breakeven" class="text-xl md:text-2xl font-extrabold text-amber-500 font-mono">204.6 天</div>
+          <div id="kpi-grand-breakeven-sub" class="text-xs text-amber-600 dark:text-amber-400 mt-1">需备 $10,180 (期望均值 ~$50/天, 保底 $25/天)</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1"><span id="kpi-days-num">30</span> 天累计净收益 (标准)</div>
+          <div id="kpi-std-cum-profit" class="text-xl md:text-2xl font-extrabold text-emerald-500 font-mono">+$750</div>
+          <div id="kpi-std-recovery-rate" class="text-xs text-[var(--muted-foreground)] mt-1">本金回收率: 14.7%</div>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <div class="text-xs text-[var(--muted-foreground)] mb-1"><span id="kpi-days-num2">30</span> 天期间存活概率</div>
+          <div id="kpi-survival-rate" class="text-xl md:text-2xl font-extrabold text-indigo-500 font-mono">86.37%</div>
+          <div id="kpi-survival-sub" class="text-xs text-rose-500 mt-1">经历 150 轮，爆仓风险 13.63%</div>
+        </div>
+      </section>
+
+      <!-- 计算器图表 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 id="chart-title" class="font-semibold text-base text-[var(--foreground)]">运行天数 (1 ~ 30 天) 累计净利润与回本线</h2>
+            <p id="chart-desc" class="text-xs text-[var(--muted-foreground)]">虚线为需备总本金回本警戒线，实线为累积净利润</p>
+          </div>
+          <div id="chart-legends" class="flex flex-wrap items-center gap-3 text-xs"></div>
+        </div>
+        <div class="relative w-full h-72 md:h-80">
+          <canvas id="calcChart" class="w-full h-full"></canvas>
+        </div>
+      </section>
+
+      <!-- 天数速查表 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <h2 class="font-semibold text-base text-[var(--foreground)]">不同运行天数 (1天 ~ 365天) 全口径对照表</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse font-mono">
+            <thead>
+              <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)] font-semibold bg-[var(--background)]/50">
+                <th class="py-2.5 px-3">天数</th>
+                <th class="py-2.5 px-3">累计胜场</th>
+                <th class="py-2.5 px-3 text-emerald-600 dark:text-emerald-400">标准·确定净利</th>
+                <th class="py-2.5 px-3">标准回本率</th>
+                <th class="py-2.5 px-3 text-amber-600 dark:text-amber-400">大马丁·保底净利</th>
+                <th class="py-2.5 px-3 text-amber-600 dark:text-amber-400 font-bold">大马丁·期望净利</th>
+                <th class="py-2.5 px-3">大马丁回本率</th>
+                <th class="py-2.5 px-3">期间存活率</th>
+                <th class="py-2.5 px-3">爆仓风险</th>
+              </tr>
+            </thead>
+            <tbody id="days-table-body" class="divide-y divide-[var(--border)]"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 轮次明细表 -->
+      <section class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-3">
+        <h2 class="font-semibold text-base text-[var(--foreground)]">1 ~ N 轮单投、需备本金与每轮胜出净利润明细</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse font-mono">
+            <thead>
+              <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)] font-semibold bg-[var(--background)]/50">
+                <th class="py-2.5 px-3">轮次 (n)</th>
+                <th class="py-2.5 px-3">标准·单投</th>
+                <th class="py-2.5 px-3">标准·累计需备</th>
+                <th class="py-2.5 px-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">标准·胜出净利润</th>
+                <th class="py-2.5 px-3">大马丁·单投</th>
+                <th class="py-2.5 px-3">大马丁·累计需备</th>
+                <th class="py-2.5 px-3 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">大马丁·胜出净利润</th>
+                <th class="py-2.5 px-3">连黑概率</th>
+              </tr>
+            </thead>
+            <tbody id="rounds-table-body" class="divide-y divide-[var(--border)]"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+
+  <script>
+    // ==========================================
+    // 状态管理 (包含交易日志与计算器双系统)
+    // ==========================================
+    const state = {
+      mainTab: 'journal', // 'journal' | 'calc'
+      initialCapital: 5115, // 初始准备金 ($)
+      // 计算器参数
+      days: 30,
+      dailywins: 5,
+      base: 5,
+      k: 5,
+      rounds: 10,
+      winrate: 50.0
+    };
+
+    // 本地存储的交易日志
+    let tradeLogs = [];
+
+    function initStorage() {
+      try {
+        const saved = localStorage.getItem('martingale_trade_logs');
+        if (saved) {
+          tradeLogs = JSON.parse(saved);
+        }
+      } catch (e) {
+        tradeLogs = [];
+      }
+      if (tradeLogs.length === 0) {
+        loadSampleLogs(false);
+      }
+    }
+
+    function saveLogs() {
+      try {
+        localStorage.setItem('martingale_trade_logs', JSON.stringify(tradeLogs));
+      } catch (e) {}
+    }
+
+    // 切换顶部主 Tab
+    function switchMainTab(tab) {
+      state.mainTab = tab;
+      const btnJournal = document.getElementById('tab-btn-journal');
+      const btnCalc = document.getElementById('tab-btn-calc');
+      const secJournal = document.getElementById('section-journal');
+      const secCalc = document.getElementById('section-calc');
+
+      if (tab === 'journal') {
+        btnJournal.className = 'px-4 py-2 rounded-lg bg-[var(--card)] text-[var(--foreground)] shadow-sm transition flex items-center gap-1.5 font-bold';
+        btnCalc.className = 'px-4 py-2 rounded-lg text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition flex items-center gap-1.5';
+        secJournal.classList.remove('hidden');
+        secCalc.classList.add('hidden');
+        renderJournal();
+      } else {
+        btnCalc.className = 'px-4 py-2 rounded-lg bg-[var(--card)] text-[var(--foreground)] shadow-sm transition flex items-center gap-1.5 font-bold';
+        btnJournal.className = 'px-4 py-2 rounded-lg text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition flex items-center gap-1.5';
+        secCalc.classList.remove('hidden');
+        secJournal.classList.add('hidden');
+        renderCalc();
+      }
+    }
+
+    // ==========================================
+    // 实战交易日志逻辑
+    // ==========================================
+    function updateQuickButtons() {
+      const strat = document.getElementById('journal-strategy').value;
+      const container = document.getElementById('quick-win-buttons');
+      const B = state.base;
+      const K = state.k;
+
+      let html = '';
+      for (let r = 1; r <= 6; r++) {
+        let profit = 0;
+        let desc = '';
+        if (strat === 'standard') {
+          profit = B;
+          desc = `第 ${r} 手胜 (+$${profit})`;
+        } else {
+          profit = B + (r - 1) * K;
+          desc = `第 ${r} 手胜 (+$${profit})`;
+        }
+
+        html += `
+          <button class="px-2.5 py-2 bg-[var(--background)] hover:bg-emerald-500/10 hover:border-emerald-500/40 border border-[var(--border)] rounded-lg text-left transition group" onclick="addQuickWin(${r}, ${profit}, '${strat}')">
+            <div class="text-[11px] text-[var(--muted-foreground)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400">${strat === 'standard' ? '标准' : '大马丁'} · 第 ${r} 手</div>
+            <div class="font-bold text-emerald-500 font-mono text-sm">+$${profit}</div>
+          </button>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    
+    // 待附加的交易截图 (Base64)
+    let pendingScreenshot = null;
+
+    function handleFileSelect(e) {
+      const file = e.target.files?.[0];
+      if (file) {
+        compressImage(file, dataUrl => {
+          setPendingImage(dataUrl);
+        });
+      }
+      e.target.value = '';
+    }
+
+    // 支持全局 Ctrl + V 粘贴截图
+    window.addEventListener('paste', e => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            compressImage(blob, dataUrl => {
+              setPendingImage(dataUrl);
+            });
+            break;
+          }
+        }
+      }
+    });
+
+    // 智能轻量压缩图片至 ~50KB，避免撑爆本地缓存
+    function compressImage(fileOrBlob, callback) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const maxDim = 900;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.75);
+          callback(compressed);
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(fileOrBlob);
+    }
+
+    function setPendingImage(dataUrl) {
+      pendingScreenshot = dataUrl;
+      const preview = document.getElementById('pending-image-preview');
+      const thumb = document.getElementById('pending-thumb');
+      if (preview && thumb) {
+        thumb.src = dataUrl;
+        preview.classList.remove('hidden');
+        preview.classList.add('flex');
+      }
+    }
+
+    function removePendingImage() {
+      pendingScreenshot = null;
+      const preview = document.getElementById('pending-image-preview');
+      if (preview) {
+        preview.classList.add('hidden');
+        preview.classList.remove('flex');
+      }
+    }
+
+    // 大图预览弹窗
+    function openImageModal(imgSrc, title) {
+      const modal = document.getElementById('image-modal');
+      const modalImg = document.getElementById('modal-image-img');
+      const modalTitle = document.getElementById('modal-image-title');
+      const downloadBtn = document.getElementById('modal-download-btn');
+      if (!modal || !modalImg) return;
+      modalImg.src = imgSrc;
+      modalTitle.textContent = title || '';
+      downloadBtn.href = imgSrc;
+      modal.classList.remove('hidden');
+    }
+
+    function closeImageModal(e) {
+      const modal = document.getElementById('image-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeImageModal();
+    });
+
+    function addQuickWin(roundNum, profit, strat) {
+      const now = new Date();
+      const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
+      const newEntry = {
+        id: Date.now(),
+        time: timeStr,
+        strat: strat === 'standard' ? '标准倍投' : '大马丁倍投',
+        desc: `在第 ${roundNum} 手猜中胜出`,
+        roundHit: roundNum,
+        profit: profit,
+        isLoss: false,
+        image: pendingScreenshot || null
+      };
+      removePendingImage();
+      tradeLogs.unshift(newEntry);
+      saveLogs();
+      renderJournal();
+    }
+
+    function addCustomLog() {
+      const descInput = document.getElementById('custom-desc');
+      const amountInput = document.getElementById('custom-amount');
+      const amount = parseFloat(amountInput.value);
+      if (isNaN(amount) || amount === 0) {
+        alert('请输入有效的盈亏金额');
+        return;
+      }
+      const desc = descInput.value.trim() || (amount > 0 ? '自定义盈利' : '自定义亏损');
+      const now = new Date();
+      const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      tradeLogs.unshift({
+        id: Date.now(),
+        time: timeStr,
+        strat: document.getElementById('journal-strategy').value === 'standard' ? '标准倍投' : '大马丁倍投',
+        desc: desc,
+        roundHit: 1,
+        profit: amount,
+        isLoss: amount < 0,
+        image: pendingScreenshot || null
+      });
+      removePendingImage();
+
+      descInput.value = '';
+      amountInput.value = '';
+      saveLogs();
+      renderJournal();
+    }
+
+    function addBustLog() {
+      const strat = document.getElementById('journal-strategy').value;
+      const c = calculate();
+      const lossAmount = (strat === 'standard' ? c.stdCum : c.grandCum);
+      if (!confirm(`确定要录入一次 10 轮连黑止损记录吗？（将扣除总本金 -$${lossAmount}）`)) return;
+
+      const now = new Date();
+      const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      tradeLogs.unshift({
+        id: Date.now(),
+        time: timeStr,
+        strat: strat === 'standard' ? '标准倍投' : '大马丁倍投',
+        desc: '触发 10 轮连黑止损',
+        roundHit: 10,
+        profit: -lossAmount,
+        isLoss: true
+      });
+      saveLogs();
+      renderJournal();
+    }
+
+    function deleteLog(id) {
+      tradeLogs = tradeLogs.filter(item => item.id !== id);
+      saveLogs();
+      renderJournal();
+    }
+
+    function clearLogs() {
+      if (!confirm('确定清空所有交易记录吗？')) return;
+      tradeLogs = [];
+      saveLogs();
+      renderJournal();
+    }
+
+    function loadSampleLogs(showAlert = true) {
+      const now = new Date();
+      tradeLogs = [];
+      // 生成最近 10 次典型交易
+      const sampleDefs = [
+        { d: 1, hit: 1, strat: '标准倍投', p: 5 },
+        { d: 1, hit: 2, strat: '标准倍投', p: 5 },
+        { d: 2, hit: 1, strat: '大马丁倍投', p: 5 },
+        { d: 2, hit: 3, strat: '大马丁倍投', p: 15 },
+        { d: 3, hit: 1, strat: '大马丁倍投', p: 5 },
+        { d: 3, hit: 2, strat: '大马丁倍投', p: 10 },
+        { d: 4, hit: 4, strat: '大马丁倍投', p: 20 },
+        { d: 4, hit: 1, strat: '标准倍投', p: 5 },
+        { d: 5, hit: 2, strat: '标准倍投', p: 5 },
+        { d: 5, hit: 1, strat: '大马丁倍投', p: 5 }
+      ];
+
+      sampleDefs.reverse().forEach((s, idx) => {
+        const timeStr = `${now.getMonth() + 1}/${now.getDate() - (5 - s.d)} 1${idx}:20`;
+        tradeLogs.push({
+          id: Date.now() - idx * 100000,
+          time: timeStr,
+          strat: s.strat,
+          desc: `在第 ${s.hit} 手猜中胜出`,
+          roundHit: s.hit,
+          profit: s.p,
+          isLoss: false
+        });
+      });
+
+      saveLogs();
+      renderJournal();
+      if (showAlert) alert('已成功加载 10 条示例交易打卡数据！');
+    }
+
+    function renderJournal() {
+      // 1. 计算累计盈亏与结余
+      let currentBalance = state.initialCapital;
+      let totalNetProfit = 0;
+      let winCount = 0;
+      let lossCount = 0;
+      let maxHit = 1;
+
+      // 倒序计算结余（因为最新的在前面）
+      const reversed = [...tradeLogs].reverse();
+      const balanceHistory = [state.initialCapital];
+
+      reversed.forEach(item => {
+        currentBalance += item.profit;
+        totalNetProfit += item.profit;
+        balanceHistory.push(currentBalance);
+        if (item.profit > 0) winCount++;
+        else lossCount++;
+        if (item.roundHit > maxHit) maxHit = item.roundHit;
+      });
+
+      // 2. 更新 KPI
+      document.getElementById('journal-total-balance').textContent = `$${currentBalance.toLocaleString()}`;
+      const netEl = document.getElementById('journal-net-profit');
+      netEl.textContent = `${totalNetProfit >= 0 ? '+' : ''}$${totalNetProfit.toLocaleString()} (净盈亏)`;
+      netEl.className = `text-xs font-semibold ${totalNetProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'} mt-1 font-mono`;
+
+      const recoveryPct = ((Math.max(0, totalNetProfit) / state.initialCapital) * 100).toFixed(1);
+      document.getElementById('journal-recovery-pct').textContent = `${recoveryPct}%`;
+      const remain = Math.max(0, state.initialCapital - totalNetProfit);
+      document.getElementById('journal-recovery-sub').textContent = remain === 0 ? '🎉 已完全赚回本金！' : `离完全回本还差 $${remain.toLocaleString()}`;
+
+      document.getElementById('journal-trade-count').textContent = `${winCount} 胜 / ${lossCount} 止损`;
+      const wr = (winCount + lossCount) > 0 ? ((winCount / (winCount + lossCount)) * 100).toFixed(1) : 100;
+      document.getElementById('journal-win-rate').textContent = `胜出率 ${wr}% (共 ${winCount + lossCount} 笔)`;
+
+      document.getElementById('journal-max-round').textContent = `第 ${maxHit} 轮`;
+      document.getElementById('log-count-badge').textContent = tradeLogs.length;
+
+      // 3. 渲染交易明细表
+      let runningBal = currentBalance;
+      const tbody = document.getElementById('journal-tbody');
+      if (tradeLogs.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-8 text-center text-[var(--muted-foreground)]">
+              暂无交易记录。请点击上方【快捷录入胜场】开始你的第一笔交易打卡！
+            </td>
+          </tr>
+        `;
+      } else {
+        tbody.innerHTML = tradeLogs.map((log, index) => {
+          const rowBal = runningBal;
+          runningBal -= log.profit; // 逐行向上回退计算结余
+          const isRec = (rowBal - state.initialCapital) >= state.initialCapital;
+          const pct = Math.max(0, ((rowBal - state.initialCapital) / state.initialCapital * 100)).toFixed(1);
+
+          return `
+            <tr class="hover:bg-[var(--card)]/80 transition-colors">
+              <td class="py-2.5 px-3 text-[var(--muted-foreground)]">
+                <span class="text-[var(--foreground)] font-semibold mr-1">#${tradeLogs.length - index}</span>
+                ${log.time}
+              </td>
+              <td class="py-2.5 px-3 text-[var(--foreground)] font-medium">${log.strat}</td>
+              <td class="py-2.5 px-3">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded ${log.isLoss ? 'bg-rose-500/10 text-rose-500 font-bold' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'}">
+                  ${log.desc}
+                </span>
+              </td>
+              <td class="py-2.5 px-3">
+                ${log.image ? `
+                  <button type="button" class="group relative inline-flex items-center justify-center rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--primary)] transition shadow-sm" onclick="openImageModal('${log.image}', '${log.strat} - ${log.time}')" title="点击查看截图原图">
+                    <img src="${log.image}" class="w-8 h-8 object-cover group-hover:scale-105 transition-transform duration-200">
+                    <span class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] transition-opacity">🔍</span>
+                  </button>
+                ` : `
+                  <span class="text-[var(--muted-foreground)]/60 text-[11px]">-</span>
+                `}
+              </td>
+              <td class="py-2.5 px-3 font-bold ${log.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}">
+                ${log.profit >= 0 ? '+' : ''}$${log.profit.toLocaleString()}
+              </td>
+              <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">$${rowBal.toLocaleString()}</td>
+              <td class="py-2.5 px-3">
+                <span class="text-[10px] px-2 py-0.5 rounded font-medium ${isRec ? 'bg-emerald-500/20 text-emerald-500 font-bold' : 'bg-[var(--background)] text-[var(--muted-foreground)] border border-[var(--border)]'}">
+                  ${isRec ? '✅ 达成回本' : `回本度 ${pct}%`}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 text-right">
+                <button class="text-rose-400 hover:text-rose-600 transition" onclick="deleteLog(${log.id})">删除</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // 4. 绘制账户资金走势折线图
+      drawEquityChart(balanceHistory);
+    }
+
+    function drawEquityChart(history) {
+      const canvas = document.getElementById('equityChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const W = rect.width;
+      const H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const padLeft = 60;
+      const padRight = 30;
+      const padTop = 30;
+      const padBottom = 35;
+      const chartW = W - padLeft - padRight;
+      const chartH = H - padTop - padBottom;
+
+      const initCap = state.initialCapital;
+      const doubleCap = initCap * 2;
+      const minVal = Math.min(...history, initCap * 0.8);
+      const maxVal = Math.max(...history, doubleCap * 1.05);
+
+      // 绘制 Y 网格
+      ctx.strokeStyle = 'rgba(150, 150, 150, 0.15)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const val = minVal + ((maxVal - minVal) / 4) * i;
+        const y = padTop + chartH - ((val - minVal) / (maxVal - minVal)) * chartH;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(W - padRight, y);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.8)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + Math.round(val).toLocaleString(), padLeft - 8, y + 4);
+      }
+
+      // 绘制初始本金线 (灰色虚线)
+      const initY = padTop + chartH - ((initCap - minVal) / (maxVal - minVal)) * chartH;
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(padLeft, initY);
+      ctx.lineTo(W - padRight, initY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(150, 150, 150, 0.8)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`初始本金 $${initCap}`, W - padRight - 5, initY - 4);
+
+      // 绘制回本线 (绿色虚线)
+      const doubleY = padTop + chartH - ((doubleCap - minVal) / (maxVal - minVal)) * chartH;
+      if (doubleY >= padTop) {
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(padLeft, doubleY);
+        ctx.lineTo(W - padRight, doubleY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#10b981';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`翻倍回本线 $${doubleCap}`, W - padRight - 5, doubleY - 4);
+      }
+
+      // 绘制资金走势折线
+      const N = history.length;
+      if (N >= 2) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#0284c7'; // sky-600
+        ctx.lineWidth = 2.5;
+        for (let i = 0; i < N; i++) {
+          const x = padLeft + (i / (N - 1)) * chartW;
+          const y = padTop + chartH - ((history[i] - minVal) / (maxVal - minVal)) * chartH;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // 绘制数据点
+        history.forEach((val, i) => {
+          const x = padLeft + (i / (N - 1)) * chartW;
+          const y = padTop + chartH - ((val - minVal) / (maxVal - minVal)) * chartH;
+          ctx.beginPath();
+          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = val >= initCap ? '#10b981' : '#f43f5e';
+          ctx.fill();
+        });
+
+        // X轴刻度
+        const step = Math.max(1, Math.round(N / 6));
+        for (let i = 0; i < N; i += step) {
+          const x = padLeft + (i / (N - 1)) * chartW;
+          ctx.fillStyle = 'rgba(150, 150, 150, 0.85)';
+          ctx.font = '11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`#${i}`, x, H - padBottom + 16);
+        }
+      }
+    }
+
+    // ==========================================
+    // 策略计算器逻辑 (完整保留并复用)
+    // ==========================================
+    function syncParam(param, val) {
+      state[param] = parseFloat(val);
+      renderCalc();
+    }
+    function setParam(param, val) {
+      state[param] = parseFloat(val);
+      const rangeEl = document.getElementById(`range-${param}`);
+      if (rangeEl) rangeEl.value = val;
+      renderCalc();
+    }
+    function syncKWithBase() {
+      state.k = state.base;
+      const rangeK = document.getElementById('range-k');
+      if (rangeK) rangeK.value = state.base;
+      renderCalc();
+    }
+
+    function calculate() {
+      const B = state.base;
+      const K = state.k;
+      const N = state.rounds;
+      const p = state.winrate / 100.0;
+      const q = 1.0 - p;
+      const D = state.days;
+      const W = state.dailywins;
+
+      const roundRows = [];
+      let stdCum = 0;
+      let grandCum = 0;
+      let expGrandCycleProfit = 0;
+
+      for (let n = 1; n <= N; n++) {
+        const stdBet = B * Math.pow(2, n - 1);
+        stdCum += stdBet;
+        const stdNetProfit = B;
+
+        const grandBet = (B + K) * Math.pow(2, n - 1) - K;
+        grandCum += grandBet;
+        const grandNetProfit = B + (n - 1) * K;
+
+        const loseProb = Math.pow(q, n) * 100.0;
+        const condWinProb = (p * Math.pow(q, n - 1)) / (1 - Math.pow(q, N));
+        expGrandCycleProfit += condWinProb * grandNetProfit;
+
+        roundRows.push({
+          n, stdBet, stdCum, stdNetProfit, grandBet, grandCum, grandNetProfit, loseProb
+        });
+      }
+
+      const bustProbCycle = Math.pow(q, N);
+      const stdDailyProfit = W * B;
+      const grandDailyProfit = W * expGrandCycleProfit;
+      const stdBreakevenDays = +(stdCum / stdDailyProfit).toFixed(1);
+      const grandBreakevenDays = +(grandCum / grandDailyProfit).toFixed(1);
+      const stdTotalProfitAtD = +(D * stdDailyProfit).toFixed(1);
+      const grandTotalProfitAtD = +(D * grandDailyProfit).toFixed(1);
+      const totalCycles = D * W;
+      const survivalProb = Math.pow(1 - bustProbCycle, totalCycles) * 100.0;
+      const cumBustProb = (100.0 - survivalProb);
+
+      return {
+        roundRows, stdCum, grandCum, stdDailyProfit, grandDailyProfit,
+        stdBreakevenDays, grandBreakevenDays, stdTotalProfitAtD, grandTotalProfitAtD,
+        survivalProb, cumBustProb, bustProbCycle: bustProbCycle * 100.0
+      };
+    }
+
+    function renderCalc() {
+      document.getElementById('val-days').textContent = `${state.days} 天`;
+      document.getElementById('val-dailywins').textContent = `${state.dailywins} 轮`;
+      document.getElementById('val-base').textContent = `$${state.base}`;
+      document.getElementById('val-k').textContent = `$${state.k}`;
+      document.getElementById('val-rounds').textContent = `${state.rounds} 轮`;
+      document.getElementById('val-winrate').textContent = `${state.winrate.toFixed(1)}%`;
+      document.getElementById('kpi-days-num').textContent = state.days;
+      document.getElementById('kpi-days-num2').textContent = state.days;
+
+      const c = calculate();
+
+      document.getElementById('kpi-std-breakeven').textContent = `${c.stdBreakevenDays} 天`;
+      document.getElementById('kpi-std-breakeven-sub').textContent = `需备本金 $${c.stdCum.toLocaleString()} (日赚 $${c.stdDailyProfit.toLocaleString()})`;
+
+      document.getElementById('kpi-grand-breakeven').textContent = `${c.grandBreakevenDays} 天`;
+      document.getElementById('kpi-grand-breakeven-sub').textContent = `需备 $${c.grandCum.toLocaleString()} (期望均值 ~$${Math.round(c.grandDailyProfit)}/天, 保底 $${c.stdDailyProfit}/天)`;
+
+      document.getElementById('kpi-std-cum-profit').textContent = `+$${Math.round(c.stdTotalProfitAtD).toLocaleString()}`;
+      const recPct = ((c.stdTotalProfitAtD / c.stdCum) * 100).toFixed(1);
+      document.getElementById('kpi-std-recovery-rate').textContent = `本金回收率: ${recPct}%`;
+
+      document.getElementById('kpi-survival-rate').textContent = `${c.survivalProb.toFixed(2)}%`;
+      document.getElementById('kpi-survival-sub').textContent = `经历 ${state.days * state.dailywins} 轮，爆仓风险 ${c.cumBustProb.toFixed(2)}%`;
+      document.getElementById('bust-prob-badge').textContent = `${c.bustProbCycle.toFixed(c.bustProbCycle < 0.01 ? 4 : 3)}%`;
+
+      // 渲染天数速查表
+      const checkDays = [1, 7, 15, 30, 60, 90, 180, 365];
+      if (!checkDays.includes(state.days)) {
+        checkDays.push(state.days);
+        checkDays.sort((a, b) => a - b);
+      }
+      const daysTbody = document.getElementById('days-table-body');
+      daysTbody.innerHTML = checkDays.map(d => {
+        const totalW = d * state.dailywins;
+        const stdP = d * c.stdDailyProfit;
+        const stdRate = ((stdP / c.stdCum) * 100).toFixed(1);
+        const grandP = d * c.grandDailyProfit;
+        const grandRate = ((grandP / c.grandCum) * 100).toFixed(1);
+        const surv = (Math.pow(1 - (c.bustProbCycle / 100.0), totalW) * 100.0);
+        const isCurrent = (d === state.days);
+
+        return `
+          <tr class="${isCurrent ? 'bg-sky-500/10 font-bold' : 'hover:bg-[var(--card)]/80'} transition-colors">
+            <td class="py-2.5 px-3 text-[var(--foreground)]">${d} 天 ${isCurrent ? '<span class="text-[10px] text-sky-500 font-sans ml-1">(当前)</span>' : ''}</td>
+            <td class="py-2.5 px-3 text-[var(--muted-foreground)]">${totalW} 胜场</td>
+            <td class="py-2.5 px-3 font-semibold text-emerald-600 dark:text-emerald-400">+$${Math.round(stdP).toLocaleString()}</td>
+            <td class="py-2.5 px-3 text-[var(--muted-foreground)]">${stdRate}% ${stdRate >= 100 ? '✅' : ''}</td>
+            <td class="py-2.5 px-3 text-[var(--muted-foreground)]">+$${Math.round(stdP).toLocaleString()}</td>
+            <td class="py-2.5 px-3 font-bold text-amber-600 dark:text-amber-400">+$${Math.round(grandP).toLocaleString()}</td>
+            <td class="py-2.5 px-3 text-[var(--muted-foreground)]">${grandRate}% ${grandRate >= 100 ? '✅' : ''}</td>
+            <td class="py-2.5 px-3 text-indigo-500">${surv.toFixed(2)}%</td>
+            <td class="py-2.5 px-3 ${surv < 70 ? 'text-rose-500 font-bold' : 'text-[var(--muted-foreground)]'}">${(100 - surv).toFixed(2)}%</td>
+          </tr>
+        `;
+      }).join('');
+
+      // 渲染轮次明细表
+      const roundsTbody = document.getElementById('rounds-table-body');
+      roundsTbody.innerHTML = c.roundRows.map(r => `
+        <tr class="hover:bg-[var(--card)]/80 transition-colors">
+          <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">第 ${r.n} 轮</td>
+          <td class="py-2.5 px-3 text-[var(--muted-foreground)]">$${r.stdBet.toLocaleString()}</td>
+          <td class="py-2.5 px-3 font-medium text-[var(--foreground)]">$${r.stdCum.toLocaleString()}</td>
+          <td class="py-2.5 px-3 bg-emerald-500/10 font-bold text-emerald-600 dark:text-emerald-400">+$${r.stdNetProfit.toLocaleString()}</td>
+          <td class="py-2.5 px-3 text-[var(--muted-foreground)]">$${r.grandBet.toLocaleString()}</td>
+          <td class="py-2.5 px-3 font-medium text-[var(--foreground)]">$${r.grandCum.toLocaleString()}</td>
+          <td class="py-2.5 px-3 bg-amber-500/10 font-bold text-amber-600 dark:text-amber-400">
+            +$${r.grandNetProfit.toLocaleString()}
+            ${r.n > 1 ? `<span class="text-[10px] text-amber-500/70 ml-1 font-normal">(+${(r.n-1)*state.k})</span>` : ''}
+          </td>
+          <td class="py-2.5 px-3 text-[var(--muted-foreground)]">${r.loseProb.toFixed(r.loseProb < 0.01 ? 4 : 2)}%</td>
+        </tr>
+      `).join('');
+
+      drawCalcChart(c);
+    }
+
+    function drawCalcChart(c) {
+      const canvas = document.getElementById('calcChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const W = rect.width;
+      const H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const legends = document.getElementById('chart-legends');
+      legends.innerHTML = `
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> 标准累计利润</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> 大马丁累计利润</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t-2 border-dashed border-sky-400 inline-block"></span> 标准本金回本线 ($${c.stdCum})</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t-2 border-dashed border-amber-400 inline-block"></span> 大马丁回本线 ($${c.grandCum})</span>
+      `;
+
+      const padLeft = 60;
+      const padRight = 30;
+      const padTop = 30;
+      const padBottom = 35;
+      const chartW = W - padLeft - padRight;
+      const chartH = H - padTop - padBottom;
+      const maxVal = Math.max(c.stdTotalProfitAtD * 1.15, c.grandTotalProfitAtD * 1.15, c.grandCum * 1.05);
+
+      ctx.strokeStyle = 'rgba(150, 150, 150, 0.15)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const yVal = (maxVal / 4) * i;
+        const yPos = padTop + chartH - (i / 4) * chartH;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, yPos);
+        ctx.lineTo(W - padRight, yPos);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.8)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + Math.round(yVal), padLeft - 8, yPos + 4);
+      }
+
+      // 回本虚线
+      const stdLineY = padTop + chartH - (c.stdCum / maxVal) * chartH;
+      if (stdLineY >= padTop) {
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(padLeft, stdLineY);
+        ctx.lineTo(W - padRight, stdLineY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`标准回本线 $${c.stdCum}`, W - padRight - 5, stdLineY - 4);
+      }
+
+      const grandLineY = padTop + chartH - (c.grandCum / maxVal) * chartH;
+      if (grandLineY >= padTop) {
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(padLeft, grandLineY);
+        ctx.lineTo(W - padRight, grandLineY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`大马丁回本线 $${c.grandCum}`, W - padRight - 5, grandLineY - 4);
+      }
+
+      // 实线走势
+      const D = state.days;
+      ctx.beginPath();
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2.5;
+      for (let d = 1; d <= D; d++) {
+        const x = padLeft + ((d - 1) / Math.max(1, D - 1)) * chartW;
+        const pVal = d * c.stdDailyProfit;
+        const y = padTop + chartH - (pVal / maxVal) * chartH;
+        if (d === 1) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.5;
+      for (let d = 1; d <= D; d++) {
+        const x = padLeft + ((d - 1) / Math.max(1, D - 1)) * chartW;
+        const pVal = d * c.grandDailyProfit;
+        const y = padTop + chartH - (pVal / maxVal) * chartH;
+        if (d === 1) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // 初始化
+    
+    // 导出为 CSV 文件（无缝兼容 Google Sheets / Excel）
+    function exportToCSV() {
+      if (tradeLogs.length === 0) {
+        alert('当前没有交易记录可导出！');
+        return;
+      }
+      let csvContent = "\uFEFF序号,打卡时间,策略模式,交易详情,胜出轮次,净盈亏(USD),是否有截图\n";
+      tradeLogs.forEach((log, index) => {
+        const rowNum = tradeLogs.length - index;
+        const hasImg = log.image ? "有" : "无";
+        csvContent += `"${rowNum}","${log.time}","${log.strat}","${log.desc}","第${log.roundHit}手","${log.profit}","${hasImg}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      link.href = url;
+      link.download = `交易打卡记录_${dateStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    // 导出完整 JSON（含所有截图 base64）
+    function exportBackupJSON() {
+      if (tradeLogs.length === 0) {
+        alert('当前没有交易记录可备份！');
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tradeLogs, null, 2));
+      const downloadAnchor = document.createElement('a');
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `martingale_trades_backup_${dateStr}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    // 导入恢复 JSON
+    function importBackupJSON(e) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (Array.isArray(imported)) {
+            tradeLogs = imported;
+            saveLogs();
+            renderJournal();
+            alert(`成功导入恢复了 ${imported.length} 条交易记录！`);
+          } else {
+            alert('导入失败：文件格式不符合交易记录规范');
+          }
+        } catch (err) {
+          alert('解析备份文件失败：' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    window.addEventListener('resize', () => {
+      if (state.mainTab === 'journal') renderJournal();
+      else renderCalc();
+    });
+
+    initStorage();
+    updateQuickButtons();
+    renderJournal();
+  </script>
+
+  <!-- 截图大图预览弹窗 (Lightbox Modal) -->
+  <div id="image-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4" onclick="closeImageModal(event)">
+    <div class="relative max-w-4xl max-h-[90vh] bg-[var(--card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-2xl flex flex-col" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--background)]/60">
+        <div class="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+          <span>🖼️ 实战交易截图凭证</span>
+          <span id="modal-image-title" class="text-[var(--muted-foreground)] font-normal font-mono"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a id="modal-download-btn" href="#" download="trade-screenshot.jpg" class="text-xs px-2.5 py-1 bg-[var(--background)] hover:bg-[var(--card)] border border-[var(--border)] rounded-md text-[var(--foreground)] transition">下载截图</a>
+          <button class="text-xs px-2.5 py-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onclick="closeImageModal()">✕ 关闭</button>
+        </div>
+      </div>
+      <div class="p-2 overflow-auto flex items-center justify-center max-h-[80vh]">
+        <img id="modal-image-img" src="" alt="交易截图" class="max-w-full max-h-[75vh] object-contain rounded-lg">
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
