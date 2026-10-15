@@ -138,6 +138,7 @@
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
+            <button class="px-2.5 py-1 bg-sky-500/10 text-sky-500 border border-sky-500/30 rounded hover:bg-sky-500/20 flex items-center gap-1 font-semibold" onclick="openCloudModal()"><span>☁️ 开启直接存云端</span></button>
             <button class="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 flex items-center gap-1" onclick="exportToCSV()" title="导出为 CSV 表格，可直接上传到 Google Drive / Sheets 打开">
               <span>📊 导出 Google 表格 (CSV)</span>
             </button>
@@ -616,6 +617,7 @@
       tradeLogs.unshift(newEntry);
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
     }
 
     function addCustomLog() {
@@ -646,6 +648,7 @@
       amountInput.value = '';
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
     }
 
     function addBustLog() {
@@ -668,12 +671,14 @@
       });
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
     }
 
     function deleteLog(id) {
       tradeLogs = tradeLogs.filter(item => item.id !== id);
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
     }
 
     function clearLogs() {
@@ -681,6 +686,7 @@
       tradeLogs = [];
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
     }
 
     function loadSampleLogs(showAlert = true) {
@@ -715,6 +721,7 @@
 
       saveLogs();
       renderJournal();
+      syncToCloud(newEntry);
       if (showAlert) alert('已成功加载 10 条示例交易打卡数据！');
     }
 
@@ -1252,6 +1259,64 @@
       e.target.value = '';
     }
 
+    
+    // 云端同步配置
+    let cloudSyncUrl = localStorage.getItem('martingale_cloud_sync_url') || '';
+
+    function openCloudModal() {
+      const modal = document.getElementById('cloud-sync-modal');
+      const input = document.getElementById('cloud-sync-url');
+      if (input) input.value = cloudSyncUrl;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeCloudModal() {
+      const modal = document.getElementById('cloud-sync-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function saveCloudUrl() {
+      const input = document.getElementById('cloud-sync-url');
+      cloudSyncUrl = (input.value || '').trim();
+      localStorage.setItem('martingale_cloud_sync_url', cloudSyncUrl);
+      closeCloudModal();
+      if (cloudSyncUrl) {
+        alert('🎉 云端同步已开启！今后每次打卡将自动静默同步至你的 Google Drive 表格。');
+      } else {
+        alert('云端同步链接已清空。');
+      }
+    }
+
+    function copyGasScript() {
+      const code = `function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["时间", "策略", "详情", "胜出手", "净盈亏($)", "截图Base64"]);
+  }
+  sheet.appendRow([data.time, data.strat, data.desc, data.roundHit, data.profit, data.image || "无"]);
+  return ContentService.createTextOutput(JSON.stringify({"result": "success"})).setMimeType(ContentService.MimeType.JSON);
+}`;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('已复制 Google Apps Script 专用脚本到剪贴板！');
+      }).catch(() => {
+        prompt('请手动复制以下脚本：', code);
+      });
+    }
+
+    // 发送数据到云端
+    function syncToCloud(entry) {
+      if (!cloudSyncUrl) return;
+      try {
+        fetch(cloudSyncUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry)
+        }).catch(err => console.log('Cloud sync silent err:', err));
+      } catch (e) {}
+    }
+
     window.addEventListener('resize', () => {
       if (state.mainTab === 'journal') renderJournal();
       else renderCalc();
@@ -1277,6 +1342,45 @@
       </div>
       <div class="p-2 overflow-auto flex items-center justify-center max-h-[80vh]">
         <img id="modal-image-img" src="" alt="交易截图" class="max-w-full max-h-[75vh] object-contain rounded-lg">
+      </div>
+    </div>
+  </div>
+
+
+  <!-- 云端自动同步配置弹窗 (Cloud Sync Settings Modal) -->
+  <div id="cloud-sync-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4" onclick="closeCloudModal(event)">
+    <div class="relative max-w-xl w-full bg-[var(--card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-2xl flex flex-col" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--background)]/60">
+        <div class="flex items-center gap-2 font-bold text-sm text-[var(--foreground)]">
+          <span>☁️ 直连 Google 云端自动同步设置</span>
+        </div>
+        <button class="text-xs px-2.5 py-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onclick="closeCloudModal()">✕ 关闭</button>
+      </div>
+
+      <div class="p-5 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-[var(--foreground)] mb-1">你的 Google Apps Script 云端同步链接 (Web App URL)：</label>
+          <input type="text" id="cloud-sync-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-[var(--primary)]">
+          <p class="text-[11px] text-[var(--muted-foreground)] mt-1">配置此链接后，每次点击打卡，交易记录和截图将<b>自动、实时、静默直接上传到你的 Google Drive 表格中</b>！</p>
+        </div>
+
+        <div class="p-3 bg-[var(--background)] border border-[var(--border)] rounded-xl space-y-2">
+          <div class="font-semibold text-[var(--foreground)]">📖 如何获取免费专属的 Google 云端链接？（只需1分钟）：</div>
+          <ol class="list-decimal list-inside space-y-1 text-[var(--muted-foreground)] leading-relaxed">
+            <li>打开你的 Google Drive，新建一个 <b>Google 表格</b>；</li>
+            <li>点击菜单栏 <b>扩展程序 (Extensions) $	o$ Apps 脚本 (Apps Script)</b>；</li>
+            <li>把系统提供的代码全选替换为你的一键脚本；</li>
+            <li>点击右上角 <b>部署 $	o$ 新建部署 $	o$ 所有人可用</b>，复制生成的链接粘贴到上方即可！</li>
+          </ol>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+          <button type="button" class="px-3 py-1.5 text-xs text-sky-500 hover:underline" onclick="copyGasScript()">📋 复制 Google Apps Script 专用代码</button>
+          <div class="flex gap-2">
+            <button type="button" class="px-3 py-1.5 border border-[var(--border)] rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--background)]" onclick="closeCloudModal()">取消</button>
+            <button type="button" class="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-bold" onclick="saveCloudUrl()">保存并启用云端同步</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
